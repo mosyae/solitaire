@@ -15,7 +15,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:#0b5d2a;touch-action:n
   -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;
   font-family:Roboto,system-ui,-apple-system,"Segoe UI",sans-serif;overscroll-behavior:none}
 #app{display:flex;flex-direction:column;height:100%;padding-top:env(safe-area-inset-top);
-  background:radial-gradient(ellipse at 50% 25%,#1c9a4c 0%,#0f6e33 45%,#084a22 100%)}
+  background:radial-gradient(ellipse at 50% 40%,#138c40 0%,#0e7535 50%,#0a5a28 100%)}
 header{display:flex;justify-content:space-around;align-items:center;color:#fff;padding:10px 8px;font-size:16px;
   background:rgba(0,0,0,.28);font-variant-numeric:tabular-nums}
 header b{font-weight:600}
@@ -27,20 +27,23 @@ nav button{background:none;border:0;color:#fff;font-size:12px;display:flex;flex-
 nav button:active{opacity:.6}
 nav svg{width:26px;height:26px;fill:currentColor}
 nav button:disabled{opacity:.35}
-.slot{position:absolute;width:var(--w);height:var(--h);border-radius:var(--rad);border:2px solid rgba(255,255,255,.16);
-  background:rgba(0,0,0,.13);display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.18);
-  font-size:calc(var(--w)*.55);font-weight:700}
+.slot{position:absolute;width:var(--w);height:var(--h);border-radius:var(--rad);border:1px solid rgba(0,0,0,.12);
+  background:rgba(0,45,15,.28);display:flex;align-items:center;justify-content:center;color:rgba(70,170,95,.45);
+  font-family:Arial,"Helvetica Neue",Helvetica,Roboto,sans-serif;font-size:calc(var(--w)*.62);font-weight:700}
 .slot svg{width:55%;height:55%;fill:rgba(255,255,255,.3)}
 .card{position:absolute;left:0;top:0;width:var(--w);height:var(--h);border-radius:var(--rad);
-  transition:left .2s ease,top .2s ease;will-change:left,top}
-.card.up{background:#fff;border:1px solid #9a9a9a;box-shadow:0 1px 2px rgba(0,0,0,.35)}
-.card.down{border:2px solid #fff;box-shadow:0 1px 2px rgba(0,0,0,.4);
-  background:repeating-linear-gradient(45deg,#2a6fb5 0 3px,#4a92d6 3px 6px)}
-.card .r{position:absolute;left:5%;top:3%;font-weight:700;font-size:calc(var(--w)*.38);line-height:1;letter-spacing:-1px}
-.card .s{position:absolute;right:5%;top:5%;width:calc(var(--w)*.3);height:calc(var(--w)*.3)}
-.card .c{position:absolute;left:18%;right:18%;bottom:7%;width:64%;height:auto;aspect-ratio:1}
+  transition:left .2s ease,top .2s ease;will-change:left,top;
+  font-family:Arial,"Helvetica Neue",Helvetica,Roboto,sans-serif}
+.card.up{background:#fff;border:1px solid #c4c4c4;box-shadow:0 1px 3px rgba(0,0,0,.35)}
+.card.down{border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.35);background-color:#56c0e6;
+  background-size:100% 100%;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 90' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cpattern id='p' width='5' height='5' patternUnits='userSpaceOnUse'%3E%3Cpath d='M2.5 0L5 2.5L2.5 5L0 2.5Z' fill='none' stroke='%23318fbf' stroke-width='.55'/%3E%3C/pattern%3E%3C/defs%3E%3Crect width='60' height='90' fill='%2356c0e6'/%3E%3Crect x='2.5' y='2.5' width='55' height='85' rx='3' fill='url(%23p)' stroke='%232a84b4' stroke-width='1.2'/%3E%3Cpath d='M30 16L41 31L30 46L19 31ZM30 44L41 59L30 74L19 59Z' fill='%2356c0e6' stroke='%232a7fae' stroke-width='1.4'/%3E%3Cpath d='M30 22L36.5 31L30 40L23.5 31ZM30 50L36.5 59L30 68L23.5 59Z' fill='none' stroke='%232a7fae' stroke-width='.9'/%3E%3Ccircle cx='30' cy='31' r='2' fill='%232a7fae'/%3E%3Ccircle cx='30' cy='59' r='2' fill='%232a7fae'/%3E%3C/svg%3E")}
+.card .r{position:absolute;left:7%;top:1%;font-weight:700;font-size:calc(var(--w)*.47);line-height:1.05;letter-spacing:-.02em}
+.card .r.ten{letter-spacing:-.09em;font-size:calc(var(--w)*.42);left:4%;top:2.5%}
+.card .s{position:absolute;right:7%;top:5%;width:calc(var(--w)*.25);height:calc(var(--w)*.25)}
+.card .c{position:absolute;left:16%;bottom:9%;width:68%;height:auto;aspect-ratio:1}
 .card svg{fill:currentColor;display:block}
-.card.red{color:#d50000}.card.blk{color:#111}
+.card.red{color:#e8001c}.card.blk{color:#000}
 .card.down>*{display:none}
 .card.drag{transition:none!important}
 .card.hint{animation:hint .45s 4 alternate}

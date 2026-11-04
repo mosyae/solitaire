@@ -281,15 +281,15 @@ function celebrate() {
 // ---------- layout / render ----------
 function layout() {
   const W = board.clientWidth, H = board.clientHeight;
-  const gap = Math.max(3, Math.round(W * 0.012));
+  const gap = Math.max(3, Math.round(W * 0.01));
   let w = Math.floor((W - gap * 8) / 7);
-  w = Math.min(w, Math.floor(H / 1.4 / 4.2), 130);
-  const h = Math.round(w * 1.4);
+  w = Math.min(w, Math.floor(H / 1.5 / 4.2), 130);
+  const h = Math.round(w * 1.5);
   const left = Math.round((W - (w * 7 + gap * 6)) / 2);
   const colX = i => left + i * (w + gap);
   G = { W, H, w, h, gap, colX, topY: gap * 2, tabY: gap * 2 + h + gap * 3, stockX: colX(6), slotF: G.slotF, slotT: G.slotT, slotStock: G.slotStock };
   const st = document.documentElement.style;
-  st.setProperty('--w', w + 'px'); st.setProperty('--h', h + 'px'); st.setProperty('--rad', Math.round(w * 0.09) + 'px');
+  st.setProperty('--w', w + 'px'); st.setProperty('--h', h + 'px'); st.setProperty('--rad', Math.round(w * 0.075) + 'px');
   const pos = (el, x, y) => { el.style.left = x + 'px'; el.style.top = y + 'px'; };
   G.slotF.forEach((el, i) => pos(el, colX(i), G.topY));
   G.slotT.forEach((el, i) => pos(el, colX(i), G.tabY));
@@ -324,7 +324,7 @@ function render() {
   const avail = H - tabY - h - G.gap * 2;
   S.tab.forEach((col, ci) => {
     const nd = col.filter(c => !c.up).length, nu = col.length - nd;
-    let od = h * 0.12, ou = h * 0.3;
+    let od = h * 0.085, ou = h * 0.3;
     const need = () => nd * od + Math.max(0, nu - 1) * ou;
     if (need() > avail) { ou = Math.max(h * 0.14, (avail - nd * od) / Math.max(1, nu - 1)); }
     if (need() > avail) { od = Math.max(h * 0.04, (avail - Math.max(0, nu - 1) * ou) / Math.max(1, nd)); }
@@ -351,7 +351,7 @@ function build() {
     const s = Math.floor(n / 13), r = n % 13 + 1;
     const el = document.createElement('div');
     el.className = 'card down'; el.dataset.id = n;
-    el.innerHTML = `<span class="r">${RANK[r]}</span>${suitSvg(s, 's')}${suitSvg(s, 'c')}`;
+    el.innerHTML = `<span class="r${r === 10 ? ' ten' : ''}">${RANK[r]}</span>${suitSvg(s, 's')}${suitSvg(s, 'c')}`;
     board.appendChild(el); els[n] = el;
   }
 }
