@@ -340,7 +340,9 @@ function updateHud() {
 }
 
 // ---------- build DOM ----------
-function suitSvg(s, cls) { return `<svg class="${cls}" viewBox="0 0 24 24"><path d="${SUIT_PATH[s]}"/></svg>`; }
+// Tight boxes so each suit fills its square (wide spade & diamond like classic card faces)
+const SUIT_VB = ['3.2 2 17.6 20', '2 2.6 20 19.2', '3.6 1 16.8 22', '2 2 20 20'];
+function suitSvg(s, cls) { return `<svg class="${cls}" viewBox="${SUIT_VB[s]}" preserveAspectRatio="none"><path d="${SUIT_PATH[s]}"/></svg>`; }
 function build() {
   const mkSlot = (html) => { const d = document.createElement('div'); d.className = 'slot'; d.innerHTML = html; board.appendChild(d); return d; };
   G.slotF = [0, 1, 2, 3].map(() => mkSlot('A'));
