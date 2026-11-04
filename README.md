@@ -14,7 +14,10 @@ You can also play in a browser: **https://mosyae.github.io/solitaire/**
 
 - Tap a card to auto-move it to the best spot, or drag cards/stacks
 - Draw 1 / Draw 3 (Menu)
-- Unlimited undo, hints, auto-finish, Windows-style scoring + time bonus
+- Difficulty (Menu): **Easy / Medium / Hard** deals are checked by a built-in solver and are always winnable;
+  **Random** is a classic fully random shuffle (some deals can't be won)
+- **Auto-Collect** button once every card is face up
+- Unlimited undo, hints, Windows-style scoring + time bonus
 - Game is saved automatically — close the app and continue later
 - Stats: games played/won, best time, best score, streaks
 

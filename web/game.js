@@ -8,6 +8,8 @@ const SUIT_PATH = [
   'M12,2C14.3,2 16.3,4 16.3,6.2C16.3,7.8 15.4,9.2 14.1,10C15.1,9.4 16.3,9 17.6,9C20,9 22,11 22,13.4C22,15.9 20,17.9 17.6,17.9C16,17.9 14.6,17.2 13.8,16C13.8,17.4 14.1,19.8 15.5,22H8.5C9.9,19.8 10.2,17.4 10.2,16C9.4,17.2 8,17.9 6.4,17.9C4,17.9 2,15.9 2,13.4C2,11 4,9 6.4,9C7.7,9 8.9,9.4 9.9,10C8.6,9.2 7.7,7.8 7.7,6.2C7.7,4 9.7,2 12,2Z'
 ];
 const RANK = ['', 'A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+const LEVELS = { easy: 'Easy', medium: 'Medium', hard: 'Hard', random: 'Random' };
+const MOVE_MS = 320;   // card flight time (keep in sync with CSS)
 const isRed = s => s === 1 || s === 2;
 const last = a => a[a.length - 1];
 const $ = id => document.getElementById(id);
@@ -16,13 +18,13 @@ const board = $('board');
 // ---------- storage ----------
 function load(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } }
 function store(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
-const settings = Object.assign({ draw: 1 }, load('sol.settings', {}));
+const settings = Object.assign({ draw: 1, level: 'random' }, load('sol.settings', {}));
 const stats = Object.assign({ played: 0, won: 0, bestTime: 0, bestScore: 0, streak: 0, bestStreak: 0 }, load('sol.stats', {}));
 
 // ---------- state ----------
 let S = null;          // game state
 let hist = [];         // undo stack (JSON snapshots)
-let busy = false;      // auto-play in progress
+let busy = false;      // auto-play / dealing in progress
 const els = [];        // card elements by id
 const locs = [];       // card id -> source descriptor
 let G = {};            // geometry
@@ -30,38 +32,68 @@ let G = {};            // geometry
 function snapshot() { return JSON.stringify(S); }
 function pushHist() { hist.push(snapshot()); if (hist.length > 300) hist.shift(); }
 
-function shuffle(a) {
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
+// ---------- dealing (with optional "always winnable" deals) ----------
+// The solver runs in a background worker so the screen never freezes.
+let worker = null;
+const workerQ = [];
+const pending = {};
+function getWorker() {
+  if (worker) return worker;
+  try {
+    const src = [shuffleDeck, solveDeal, makeDeal].map(f => f.toString()).join('\n') +
+      '\nonmessage = e => postMessage(makeDeal(e.data.level, e.data.draw, e.data.limit));';
+    worker = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+    worker.onmessage = e => { const cb = workerQ.shift(); if (cb) cb(e.data); };
+  } catch (e) { worker = null; }
+  return worker;
+}
+function requestDeal(level, draw, cb) {
+  const w = getWorker();
+  if (!w) { setTimeout(() => cb(makeDeal(level, draw, 4000)), 30); return; }   // no workers: run inline
+  workerQ.push(cb);
+  w.postMessage({ level, draw, limit: 6000 });
+}
+// keep one ready-made deal per difficulty so "New game" is instant
+const nextKey = (lv, d) => 'sol.next.' + lv + '.' + d;
+function prefetchDeal() {
+  const lv = settings.level, d = settings.draw, key = nextKey(lv, d);
+  if (lv === 'random' || pending[key] || load(key, null)) return;
+  pending[key] = true;
+  requestDeal(lv, d, r => { pending[key] = false; store(key, r.deck); });
 }
 
 function newGame(order) {
   closeDlg();
+  if (busy) return;
   if (S && S.counted && !S.won) { stats.streak = 0; store('sol.stats', stats); }
-  const deck = order ? order.slice() : shuffle([...Array(52).keys()]);
+  if (order) return dealGame(order, S ? S.level : settings.level);
+  const lv = settings.level, d = settings.draw;
+  if (lv === 'random') return dealGame(shuffleDeck(), 'random');
+  const cached = load(nextKey(lv, d), null);
+  if (cached) { store(nextKey(lv, d), null); dealGame(cached, lv); setTimeout(prefetchDeal, 1500); return; }
+  busy = true; toast('Shuffling a winnable ' + LEVELS[lv].toLowerCase() + ' deal…', 8000);
+  requestDeal(lv, d, r => { busy = false; hideToast(); dealGame(r.deck, lv); setTimeout(prefetchDeal, 1500); });
+}
+
+function dealGame(deck, level) {
   S = { stock: [], waste: [], found: [[], [], [], []], tab: [[], [], [], [], [], [], []],
-        score: 0, moves: 0, time: 0, started: false, counted: false, won: false, draw: settings.draw, deck: deck.slice() };
-  // deal row by row so column i gets i+1 cards, top one face up
+        score: 0, moves: 0, time: 0, started: false, counted: false, won: false,
+        draw: settings.draw, level, deck: deck.slice() };
+  const mk = n => ({ id: n, s: Math.floor(n / 13), r: n % 13 + 1, up: false });
   let k = 0;
   const dealOrder = [];
-  for (let row = 0; row < 7; row++) for (let col = row; col < 7; col++) {
-    const n = deck[k++]; S.tab[col].push({ id: n, s: Math.floor(n / 13), r: n % 13 + 1, up: false }); dealOrder.push(n);
-  }
+  for (let row = 0; row < 7; row++) for (let col = row; col < 7; col++) { S.tab[col].push(mk(deck[k])); dealOrder.push(deck[k++]); }
   S.tab.forEach(c => last(c).up = true);
-  while (k < 52) { const n = deck[k++]; S.stock.push({ id: n, s: Math.floor(n / 13), r: n % 13 + 1, up: false }); }
+  while (k < 52) S.stock.push(mk(deck[k++]));
   hist = [];
-  // deal animation: start everything at the stock, then fly out
+  // deal animation: start everything at the stock, then fly out one by one
   board.classList.add('notrans');
-  for (const el of els) { el.style.left = G.stockX + 'px'; el.style.top = G.topY + 'px'; }
-  render();                       // set faces/z
-  for (const el of els) { el.style.left = G.stockX + 'px'; el.style.top = G.topY + 'px'; }
+  for (const el of els) { el.className = el.className.replace(' up', ' down'); place(el, G.stockX, G.topY); }
   void board.offsetWidth;
   board.classList.remove('notrans');
-  dealOrder.forEach((id, i) => els[id].style.transitionDelay = (i * 22) + 'ms');
-  render();
-  setTimeout(() => dealOrder.forEach(id => els[id].style.transitionDelay = ''), 1200);
+  dealOrder.forEach((id, i) => els[id].style.transitionDelay = (i * 30) + 'ms');
+  render({ noFlip: true });
+  setTimeout(() => dealOrder.forEach(id => els[id].style.transitionDelay = ''), 30 * 28 + MOVE_MS);
   saveGame(); updateHud();
 }
 
@@ -94,9 +126,9 @@ function legal(src, dst) {
 }
 function pileOf(d) { return d.p === 'w' ? S.waste : d.p === 'f' ? S.found[d.i] : S.tab[d.i]; }
 
-function doMove(src, dst, opt = {}) {
+function doMove(src, dst) {
   if (!legal(src, dst)) return false;
-  if (!opt.noHist) pushHist();
+  pushHist();
   const from = pileOf(src);
   const n = src.p === 't' ? from.length - src.k : 1;
   const moving = from.splice(from.length - n, n);
@@ -105,8 +137,13 @@ function doMove(src, dst, opt = {}) {
   if (src.p === 'w' && dst.p === 't') S.score += 5;
   else if (dst.p === 'f' && src.p !== 'f') S.score += 10;
   else if (src.p === 'f' && dst.p === 't') S.score = Math.max(0, S.score - 15);
-  if (src.p === 't' && from.length && !last(from).up) { last(from).up = true; S.score += 5; }
+  let flipped = false;
+  if (src.p === 't' && from.length && !last(from).up) { last(from).up = true; S.score += 5; flipped = true; }
+  // stagger a moving stack slightly so it looks like real cards
+  moving.forEach((c, i) => { if (i) els[c.id].style.transitionDelay = (i * 25) + 'ms'; });
+  if (flipped) els[last(from).id].dataset.flipDelay = '120';
   afterMove();
+  setTimeout(() => moving.forEach(c => els[c.id].style.transitionDelay = ''), MOVE_MS + 300);
   return true;
 }
 
@@ -115,7 +152,11 @@ function drawStock() {
   if (S.stock.length) {
     pushHist();
     const n = Math.min(S.draw, S.stock.length);
-    for (let i = 0; i < n; i++) { const c = S.stock.pop(); c.up = true; S.waste.push(c); }
+    for (let i = 0; i < n; i++) {
+      const c = S.stock.pop(); c.up = true; S.waste.push(c);
+      els[c.id].style.transitionDelay = (i * 70) + 'ms';
+      setTimeout(() => els[c.id].style.transitionDelay = '', MOVE_MS + 300);
+    }
   } else if (S.waste.length) {
     pushHist();
     while (S.waste.length) { const c = S.waste.pop(); c.up = false; S.stock.push(c); }
@@ -130,7 +171,6 @@ function afterMove() {
   if (!S.counted) { S.counted = true; stats.played++; }
   render(); updateHud(); saveGame();
   if (S.found.every(f => f.length === 13)) return win();
-  if (!busy && canAutoFinish()) autoFinish();
 }
 
 function undo() {
@@ -138,7 +178,7 @@ function undo() {
   if (!hist.length) { toast('Nothing to undo'); return; }
   S = JSON.parse(hist.pop());
   S.moves++; // undo counts as a move
-  render(); updateHud(); saveGame();
+  render({ noFlip: true }); updateHud(); saveGame();
 }
 
 // ---------- auto move on tap ----------
@@ -172,29 +212,32 @@ function tap(src, el) {
   else { el.classList.remove('shake'); void el.offsetWidth; el.classList.add('shake'); }
 }
 
-// ---------- auto finish ----------
-function canAutoFinish() {
-  return !S.won && !S.stock.length && !S.waste.length && S.tab.every(c => c.every(x => x.up)) &&
-         S.tab.some(c => c.length);
+// ---------- auto-collect (once every card is face up) ----------
+function canCollect() {
+  return S && !S.won && !busy && S.tab.every(c => c.every(x => x.up)) && S.found.some(f => f.length < 13);
 }
-function autoFinish() {
-  busy = true;
+function autoCollect() {
+  if (!canCollect()) return;
+  busy = true; updateHud();
+  pushHist();
   const step = () => {
-    if (S.won || !S.tab.some(c => c.length)) { busy = false; return; }
+    // lowest card that can go up, from the tableau tops or anywhere in the deck
     let best = null;
-    for (let i = 0; i < 7; i++) {
-      const col = S.tab[i]; if (!col.length) continue;
-      const c = last(col);
-      for (let f = 0; f < 4; f++) if (canFound(c, S.found[f]) && (!best || c.r < best.r)) best = { r: c.r, src: { p: 't', i, k: col.length - 1 }, dst: { p: 'f', i: f } };
-    }
-    if (!best) { busy = false; return; }
-    pushHist();
-    const from = S.tab[best.src.i]; S.found[best.dst.i].push(from.pop()); S.score += 10; S.moves++;
+    const consider = (c, take) => {
+      if (best && c.r >= best.c.r) return;
+      for (let f = 0; f < 4; f++) if (canFound(c, S.found[f])) { best = { c, f, take }; return; }
+    };
+    S.tab.forEach(col => { if (col.length) consider(last(col), () => col.pop()); });
+    S.waste.forEach((c, i) => consider(c, () => S.waste.splice(S.waste.indexOf(c), 1)[0]));
+    S.stock.forEach(c => consider(c, () => S.stock.splice(S.stock.indexOf(c), 1)[0]));
+    if (!best) { busy = false; render(); updateHud(); saveGame(); return; }
+    const c = best.take(); c.up = true;
+    S.found[best.f].push(c); S.score += 10; S.moves++;
     render(); updateHud();
     if (S.found.every(f => f.length === 13)) { busy = false; saveGame(); return win(); }
-    setTimeout(step, 90);
+    setTimeout(step, 110);
   };
-  setTimeout(step, 250);
+  step();
 }
 
 // ---------- hint ----------
@@ -259,23 +302,21 @@ function win() {
   if (!stats.bestTime || S.time < stats.bestTime) stats.bestTime = S.time;
   stats.bestScore = Math.max(stats.bestScore, S.score);
   updateHud(); saveGame();
-  celebrate();
+  setTimeout(celebrate, 400);
   setTimeout(() => showDlg('🎉 You won!',
-    `<div class="stats"><span>Time</span><span>${fmt(S.time)}</span><span>Moves</span><span>${S.moves}</span>
-     <span>Time bonus</span><span>${bonus}</span><span>Score</span><span>${S.score}</span>
+    `<div class="stats"><span>Level</span><span>${LEVELS[S.level || 'random']}</span><span>Time</span><span>${fmt(S.time)}</span>
+     <span>Moves</span><span>${S.moves}</span><span>Time bonus</span><span>${bonus}</span><span>Score</span><span>${S.score}</span>
      <span>Best time</span><span>${fmt(stats.bestTime)}</span><span>Games won</span><span>${stats.won} / ${stats.played}</span></div>`,
-    [['New game', () => newGame(), 'pri']]), 1400);
+    [['New game', () => newGame(), 'pri']]), 2000);
 }
 function celebrate() {
   els.forEach((el, i) => {
+    el.style.transition = 'transform 1.1s cubic-bezier(.3,.1,.4,1)';
     el.style.transitionDelay = (i * 18) + 'ms';
-    el.style.transition = 'left 1s ease-in, top 1s ease-in';
-    setTimeout(() => {
-      el.style.left = (Math.random() * (G.W - G.w)) + 'px';
-      el.style.top = (Math.random() * (G.H - G.h)) + 'px';
-    }, 20);
+    place(el, Math.random() * (G.W - G.w), Math.random() * (G.H - G.h));
+    el.style.zIndex = 10 + i;
   });
-  setTimeout(() => els.forEach(el => { el.style.transition = ''; el.style.transitionDelay = ''; }), 2500);
+  setTimeout(() => els.forEach(el => { el.style.transition = ''; el.style.transitionDelay = ''; }), 2600);
 }
 
 // ---------- layout / render ----------
@@ -296,40 +337,55 @@ function layout() {
   pos(G.slotStock, colX(6), G.topY);
 }
 
-function setCard(c, x, y, z, src) {
+// cards are positioned with GPU transforms for smooth motion
+function place(el, x, y) { el._x = x; el._y = y; el.style.transform = `translate3d(${x}px,${y}px,0)`; }
+
+function setCard(c, x, y, z, src, opt) {
   const el = els[c.id];
+  x = Math.round(x); y = Math.round(y);
+  const wasUp = el.classList.contains('up');
   const cls = 'card ' + (c.up ? 'up ' : 'down ') + (isRed(c.s) ? 'red' : 'blk');
-  if (el.className.replace(/ (hint|shake|drag)/g, '') !== cls) el.className = cls;
-  const nx = Math.round(x) + 'px', ny = Math.round(y) + 'px';
-  if (el.style.left !== nx || el.style.top !== ny) {
+  const keep = (el.className.match(/ (hint|shake|drag|fly|flip)/g) || []).join('');
+  if (el.className !== cls + keep) el.className = cls + keep;
+  if (c.up && !wasUp && !opt.noFlip) {
+    // turn-over animation
+    const d = +(el.dataset.flipDelay || 0); delete el.dataset.flipDelay;
+    el.style.animationDelay = d + 'ms';
+    el.classList.remove('flip'); void el.offsetWidth; el.classList.add('flip');
+    setTimeout(() => el.classList.remove('flip'), 400 + d);
+  }
+  if (el._x !== x || el._y !== y) {
     // lift moving cards above everything while they travel
     el.style.zIndex = 500 + z;
-    clearTimeout(el._zt); el._zt = setTimeout(() => { el.style.zIndex = z; }, 230);
-    el.style.left = nx; el.style.top = ny;
-  } else if (!el._zt || el.style.zIndex < 500) el.style.zIndex = z;
+    el.classList.add('fly');
+    place(el, x, y);
+    const delay = parseFloat(el.style.transitionDelay) || 0;
+    clearTimeout(el._zt);
+    el._zt = setTimeout(() => { el.style.zIndex = z; el.classList.remove('fly'); el._zt = 0; }, MOVE_MS + delay + 30);
+  } else if (!el._zt) el.style.zIndex = z;
   locs[c.id] = src;
 }
 
-function render() {
+function render(opt = {}) {
   const { w, h, colX, topY, tabY, H } = G;
-  S.stock.forEach((c, i) => setCard(c, colX(6), topY, 10 + i, { p: 's' }));
+  S.stock.forEach((c, i) => setCard(c, colX(6), topY, 10 + i, { p: 's' }, opt));
   // waste (fan last 3 in draw-3 mode)
   const wl = S.waste.length, vis = S.draw === 3 ? Math.min(3, wl) : 1, fan = w * 0.3;
   const wx = colX(5) - (S.draw === 3 ? fan * 2 : 0);
   S.waste.forEach((c, i) => {
     const off = Math.max(0, i - (wl - vis));
-    setCard(c, wx + off * fan, topY, 10 + i, { p: 'w' });
+    setCard(c, wx + off * fan, topY, 10 + i, { p: 'w' }, opt);
   });
-  S.found.forEach((f, fi) => f.forEach((c, i) => setCard(c, colX(fi), topY, 10 + i, { p: 'f', i: fi })));
+  S.found.forEach((f, fi) => f.forEach((c, i) => setCard(c, colX(fi), topY, 10 + i, { p: 'f', i: fi }, opt)));
   const avail = H - tabY - h - G.gap * 2;
   S.tab.forEach((col, ci) => {
     const nd = col.filter(c => !c.up).length, nu = col.length - nd;
-    let od = h * 0.085, ou = h * 0.3;
+    let od = h * 0.085, ou = h * 0.32;
     const need = () => nd * od + Math.max(0, nu - 1) * ou;
     if (need() > avail) { ou = Math.max(h * 0.14, (avail - nd * od) / Math.max(1, nu - 1)); }
     if (need() > avail) { od = Math.max(h * 0.04, (avail - Math.max(0, nu - 1) * ou) / Math.max(1, nd)); }
     let y = tabY;
-    col.forEach((c, i) => { setCard(c, colX(ci), y, 10 + i, { p: 't', i: ci, k: i }); y += c.up ? ou : od; });
+    col.forEach((c, i) => { setCard(c, colX(ci), y, 10 + i, { p: 't', i: ci, k: i }, opt); y += c.up ? ou : od; });
   });
 }
 
@@ -337,6 +393,7 @@ function fmt(t) { const m = Math.floor(t / 60), s = t % 60; return (m < 10 ? '0'
 function updateHud() {
   $('score').textContent = S.score; $('moves').textContent = S.moves; $('time').textContent = fmt(S.time);
   $('bUndo').disabled = !hist.length;
+  $('collect').hidden = !canCollect();
 }
 
 // ---------- build DOM ----------
@@ -369,8 +426,7 @@ board.addEventListener('pointerdown', e => {
   const id = +el.dataset.id, src = locs[id];
   if (!src) return;
   if (src.p === 's') { drag = { stockTap: true, x: e.clientX, y: e.clientY, id: e.pointerId }; return; }
-  let s = src;
-  if (src.p === 'w' || src.p === 'f') s = Object.assign({}, src); // always the top card
+  const s = (src.p === 'w' || src.p === 'f') ? Object.assign({}, src) : src; // waste/foundation: top card only
   const cs = cardsOf(s);
   const draggable = cs.length && cs[0].up;
   drag = { src: s, el, x: e.clientX, y: e.clientY, id: e.pointerId, moved: false, draggable,
@@ -383,22 +439,15 @@ board.addEventListener('pointermove', e => {
   if (!drag.moved) {
     if (Math.hypot(dx, dy) < 8) return;
     drag.moved = true;
-    drag.list.forEach((el, i) => { el.classList.add('drag'); el.style.zIndex = 1000 + i; });
+    drag.list.forEach((el, i) => { el.classList.add('drag'); el.style.zIndex = 1000 + i; el._ox = el._x; el._oy = el._y; });
   }
-  drag.dx = dx; drag.dy = dy;
-  drag.list.forEach(el => el.style.transform = `translate(${dx}px,${dy}px)`);
+  drag.list.forEach(el => place(el, el._ox + dx, el._oy + dy));
 });
 function endDrag(e, cancel) {
   if (!drag || e.pointerId !== drag.id) return;
   const d = drag; drag = null;
   if (d.stockTap) { if (!cancel && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 12) drawStock(); return; }
   if (!d.moved) { if (!cancel) tap(d.src, d.el); return; }
-  // bake the drag offset into left/top so cards animate from where they were dropped
-  d.list.forEach(el => {
-    el.style.left = (parseFloat(el.style.left) + d.dx) + 'px';
-    el.style.top = (parseFloat(el.style.top) + d.dy) + 'px';
-    el.style.transform = '';
-  });
   void board.offsetWidth;
   d.list.forEach(el => el.classList.remove('drag'));
   let dst = null;
@@ -447,33 +496,49 @@ function confirmNew() {
       [['Deal new game', () => newGame(), 'pri'], ['Cancel', closeDlg]]);
   } else newGame();
 }
+const LEVEL_INFO = {
+  easy: 'Always winnable, and the obvious moves usually work.',
+  medium: 'Always winnable, but needs some planning.',
+  hard: 'Always winnable, but tricky — you’ll need to think ahead.',
+  random: 'Classic fully random shuffle. Some deals can’t be won.'
+};
 function menu() {
   if (busy) return;
-  const seg = `<div class="seg"><button data-d="1" class="${settings.draw === 1 ? 'on' : ''}">Draw 1</button><button data-d="3" class="${settings.draw === 3 ? 'on' : ''}">Draw 3</button></div>
-    <div class="muted">Draw mode applies when you start a new game.</div><br>
+  const lv = settings.level;
+  const body = `<div class="lbl">Difficulty</div>
+    <div class="seg" id="segL">${Object.keys(LEVELS).map(k => `<button data-l="${k}" class="${lv === k ? 'on' : ''}">${LEVELS[k]}</button>`).join('')}</div>
+    <div class="muted" id="lvInfo">${LEVEL_INFO[lv]}</div>
+    <div class="lbl">Draw</div>
+    <div class="seg" id="segD"><button data-d="1" class="${settings.draw === 1 ? 'on' : ''}">Draw 1</button><button data-d="3" class="${settings.draw === 3 ? 'on' : ''}">Draw 3</button></div>
+    <div class="muted">Changes apply when you start a new game. This game: ${LEVELS[S.level || 'random']}, Draw ${S.draw}.</div><br>
     <div class="stats"><span>Games played</span><span>${stats.played}</span><span>Games won</span><span>${stats.won}${stats.played ? ' (' + Math.round(stats.won / stats.played * 100) + '%)' : ''}</span>
     <span>Best time</span><span>${stats.bestTime ? fmt(stats.bestTime) : '—'}</span><span>Best score</span><span>${stats.bestScore}</span>
     <span>Current streak</span><span>${stats.streak}</span><span>Best streak</span><span>${stats.bestStreak}</span></div>`;
-  showDlg('Solitaire', seg, [
+  showDlg('Solitaire', body, [
     ['New game', () => { closeDlg(); confirmNew(); }, 'pri'],
-    ['Restart this deal', () => { closeDlg(); const d = S.deck; newGame(d); }],
+    ['Restart this deal', () => { closeDlg(); newGame(S.deck); }],
     ['Reset statistics', () => showDlg('Reset statistics?', 'This cannot be undone.', [
       ['Reset', () => { Object.assign(stats, { played: 0, won: 0, bestTime: 0, bestScore: 0, streak: 0, bestStreak: 0 }); store('sol.stats', stats); menu(); }, 'pri'],
       ['Cancel', menu]])],
     ['Close', closeDlg]
   ]);
-  $('dlgB').querySelectorAll('.seg button').forEach(b => b.onclick = () => {
-    settings.draw = +b.dataset.d; store('sol.settings', settings);
-    $('dlgB').querySelectorAll('.seg button').forEach(x => x.classList.toggle('on', x === b));
+  const seg = (id, fn) => $(id).querySelectorAll('button').forEach(b => b.onclick = () => {
+    fn(b); store('sol.settings', settings);
+    $(id).querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+    prefetchDeal();
   });
+  seg('segL', b => { settings.level = b.dataset.l; $('lvInfo').textContent = LEVEL_INFO[settings.level]; });
+  seg('segD', b => { settings.draw = +b.dataset.d; });
 }
 $('bMenu').onclick = menu;
 $('bNew').onclick = confirmNew;
 $('bHint').onclick = hint;
 $('bUndo').onclick = undo;
+$('collect').onclick = autoCollect;
 
 let toastT;
-function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 1800); }
+function toast(msg, ms = 1800) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(hideToast, ms); }
+function hideToast() { $('toast').classList.remove('show'); }
 
 // Android back button: close dialog if open, otherwise let the app close
 window.onBack = function () { if (!$('dlg').hidden && !(S && S.won)) { closeDlg(); return true; } return false; };
@@ -485,7 +550,7 @@ setInterval(() => {
 document.addEventListener('visibilitychange', () => { if (document.hidden && S) saveGame(); });
 window.addEventListener('pagehide', () => S && saveGame());
 window.addEventListener('resize', () => {
-  board.classList.add('notrans'); layout(); if (S) render(); void board.offsetWidth; board.classList.remove('notrans');
+  board.classList.add('notrans'); layout(); if (S) render({ noFlip: true }); void board.offsetWidth; board.classList.remove('notrans');
 });
 
 // ---------- start ----------
@@ -494,8 +559,9 @@ layout();
 const saved = load('sol.game', null);
 if (saved && saved.S && saved.S.tab && !saved.S.won) {
   S = saved.S; hist = saved.hist || [];
-  board.classList.add('notrans'); render(); void board.offsetWidth; board.classList.remove('notrans');
+  board.classList.add('notrans'); render({ noFlip: true }); void board.offsetWidth; board.classList.remove('notrans');
   updateHud();
 } else newGame();
+setTimeout(prefetchDeal, 2000);
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});

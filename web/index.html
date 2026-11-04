@@ -32,14 +32,17 @@ nav button:disabled{opacity:.35}
   font-family:Arial,"Helvetica Neue",Helvetica,Roboto,sans-serif;font-size:calc(var(--w)*.62);font-weight:700}
 .slot svg{width:55%;height:55%;fill:rgba(255,255,255,.3)}
 .card{position:absolute;left:0;top:0;width:var(--w);height:var(--h);border-radius:var(--rad);
-  transition:left .2s ease,top .2s ease;will-change:left,top;
+  transition:transform .32s cubic-bezier(.25,.75,.3,1),box-shadow .2s;will-change:transform;
   font-family:Arial,"Helvetica Neue",Helvetica,Roboto,sans-serif}
+.card.up.fly,.card.down.fly{box-shadow:0 6px 14px rgba(0,0,0,.45)}
+.card.flip{animation:flip .3s ease-out both}
+@keyframes flip{0%{scale:.05 1}100%{scale:1 1}}
 .card.up{background:#fff;border:1px solid #c4c4c4;box-shadow:0 1px 3px rgba(0,0,0,.35)}
 .card.down{border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.35);background-color:#56c0e6;
   background-size:100% 100%;
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 90' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cpattern id='p' width='5' height='5' patternUnits='userSpaceOnUse'%3E%3Cpath d='M2.5 0L5 2.5L2.5 5L0 2.5Z' fill='none' stroke='%23318fbf' stroke-width='.55'/%3E%3C/pattern%3E%3C/defs%3E%3Crect width='60' height='90' fill='%2356c0e6'/%3E%3Crect x='2.5' y='2.5' width='55' height='85' rx='3' fill='url(%23p)' stroke='%232a84b4' stroke-width='1.2'/%3E%3Cpath d='M30 16L41 31L30 46L19 31ZM30 44L41 59L30 74L19 59Z' fill='%2356c0e6' stroke='%232a7fae' stroke-width='1.4'/%3E%3Cpath d='M30 22L36.5 31L30 40L23.5 31ZM30 50L36.5 59L30 68L23.5 59Z' fill='none' stroke='%232a7fae' stroke-width='.9'/%3E%3Ccircle cx='30' cy='31' r='2' fill='%232a7fae'/%3E%3Ccircle cx='30' cy='59' r='2' fill='%232a7fae'/%3E%3C/svg%3E")}
-.card .r{position:absolute;left:5%;top:-2%;font-weight:700;font-size:calc(var(--w)*.54);line-height:1.05;letter-spacing:-.03em}
-.card .r.ten{letter-spacing:-.1em;font-size:calc(var(--w)*.46);left:2%;top:1%}
+.card .r{position:absolute;left:5%;top:-1%;font-weight:700;font-size:calc(var(--w)*.6);line-height:1;letter-spacing:-.03em}
+.card .r.ten{letter-spacing:-.06em;left:2%;transform:scaleX(.8);transform-origin:0 0}
 .card .s{position:absolute;right:4%;top:5%;width:calc(var(--w)*.29);height:calc(var(--w)*.29)}
 .card .c{position:absolute;left:10.5%;bottom:5%;width:79%;height:auto;aspect-ratio:1}
 .card svg{fill:currentColor;display:block}
@@ -49,7 +52,12 @@ nav button:disabled{opacity:.35}
 .card.hint{animation:hint .45s 4 alternate}
 @keyframes hint{to{box-shadow:0 0 0 3px #ffd400,0 0 16px 4px #ffd400}}
 .card.shake{animation:shake .3s}
-@keyframes shake{25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}
+@keyframes shake{25%{margin-left:-5px}75%{margin-left:5px}}
+#collect{position:absolute;left:50%;bottom:22%;translate:-50% 0;z-index:900;font:inherit;font-size:20px;color:#fff;
+  padding:14px 40px;border:0;border-radius:8px;background:linear-gradient(#f08a24,#d8630a);
+  box-shadow:0 4px 10px rgba(0,0,0,.4);white-space:nowrap}
+#collect:active{filter:brightness(.9)}
+.lbl{font-weight:600;font-size:14px;margin-top:4px}
 .slot.hint{animation:hint .45s 4 alternate}
 #toast{position:fixed;left:50%;bottom:calc(90px + env(safe-area-inset-bottom));transform:translateX(-50%);
   background:rgba(0,0,0,.8);color:#fff;padding:10px 18px;border-radius:20px;font-size:15px;opacity:0;
@@ -64,7 +72,7 @@ nav button:disabled{opacity:.35}
 #dlg button.pri{background:#0f7a39;color:#fff;font-weight:600}
 #dlg button:active{filter:brightness(.9)}
 .seg{display:flex;border-radius:10px;overflow:hidden;border:1px solid #0f7a39;margin:6px 0 4px}
-.seg button{flex:1;border-radius:0!important;background:#fff!important}
+.seg button{flex:1;border-radius:0!important;background:#fff!important;padding:10px 4px!important;font-size:14px!important}
 .seg button.on{background:#0f7a39!important;color:#fff!important;font-weight:600}
 .stats{display:grid;grid-template-columns:1fr auto;gap:2px 12px}
 .stats span:nth-child(even){text-align:right;font-weight:600}
@@ -78,7 +86,7 @@ nav button:disabled{opacity:.35}
     <div id="time">00:00</div>
     <div>Moves: <b id="moves">0</b></div>
   </header>
-  <main id="board"></main>
+  <main id="board"><button id="collect" hidden>Auto-Collect</button></main>
   <nav>
     <button id="bMenu"><svg viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>MENU</button>
     <button id="bNew"><svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z"/></svg>NEW</button>
@@ -89,6 +97,7 @@ nav button:disabled{opacity:.35}
 <div id="dlg" hidden><div class="box"><h2 id="dlgT"></h2><div class="body" id="dlgB"></div><div class="btns" id="dlgBtns"></div></div></div>
 <div id="toast"></div>
 
+<script src="solver.js"></script>
 <script src="game.js"></script>
 </body>
 </html>
