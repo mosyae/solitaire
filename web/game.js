@@ -9,7 +9,7 @@ const SUIT_PATH = [
 ];
 const RANK = ['', 'A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
 const LEVELS = { easy: 'Easy', medium: 'Medium', hard: 'Hard', random: 'Random' };
-const MOVE_MS = 320;   // card flight time (keep in sync with CSS)
+const MOVE_MS = 200;   // card slide time (keep in sync with CSS)
 const isRed = s => s === 1 || s === 2;
 const last = a => a[a.length - 1];
 const $ = id => document.getElementById(id);
@@ -91,9 +91,9 @@ function dealGame(deck, level) {
   for (const el of els) { el.className = el.className.replace(' up', ' down'); place(el, G.stockX, G.topY); }
   void board.offsetWidth;
   board.classList.remove('notrans');
-  dealOrder.forEach((id, i) => els[id].style.transitionDelay = (i * 30) + 'ms');
+  dealOrder.forEach((id, i) => els[id].style.transitionDelay = (i * 22) + 'ms');
   render({ noFlip: true });
-  setTimeout(() => dealOrder.forEach(id => els[id].style.transitionDelay = ''), 30 * 28 + MOVE_MS);
+  setTimeout(() => dealOrder.forEach(id => els[id].style.transitionDelay = ''), 22 * 28 + MOVE_MS);
   saveGame(); updateHud();
 }
 
@@ -137,13 +137,8 @@ function doMove(src, dst) {
   if (src.p === 'w' && dst.p === 't') S.score += 5;
   else if (dst.p === 'f' && src.p !== 'f') S.score += 10;
   else if (src.p === 'f' && dst.p === 't') S.score = Math.max(0, S.score - 15);
-  let flipped = false;
-  if (src.p === 't' && from.length && !last(from).up) { last(from).up = true; S.score += 5; flipped = true; }
-  // stagger a moving stack slightly so it looks like real cards
-  moving.forEach((c, i) => { if (i) els[c.id].style.transitionDelay = (i * 25) + 'ms'; });
-  if (flipped) els[last(from).id].dataset.flipDelay = '120';
+  if (src.p === 't' && from.length && !last(from).up) { last(from).up = true; S.score += 5; }
   afterMove();
-  setTimeout(() => moving.forEach(c => els[c.id].style.transitionDelay = ''), MOVE_MS + 300);
   return true;
 }
 
@@ -152,11 +147,7 @@ function drawStock() {
   if (S.stock.length) {
     pushHist();
     const n = Math.min(S.draw, S.stock.length);
-    for (let i = 0; i < n; i++) {
-      const c = S.stock.pop(); c.up = true; S.waste.push(c);
-      els[c.id].style.transitionDelay = (i * 70) + 'ms';
-      setTimeout(() => els[c.id].style.transitionDelay = '', MOVE_MS + 300);
-    }
+    for (let i = 0; i < n; i++) { const c = S.stock.pop(); c.up = true; S.waste.push(c); }
   } else if (S.waste.length) {
     pushHist();
     while (S.waste.length) { const c = S.waste.pop(); c.up = false; S.stock.push(c); }
@@ -311,7 +302,7 @@ function win() {
 }
 function celebrate() {
   els.forEach((el, i) => {
-    el.style.transition = 'transform 1.1s cubic-bezier(.3,.1,.4,1)';
+    el.style.transition = 'left 1s ease-in, top 1s ease-in';
     el.style.transitionDelay = (i * 18) + 'ms';
     place(el, Math.random() * (G.W - G.w), Math.random() * (G.H - G.h));
     el.style.zIndex = 10 + i;
@@ -337,31 +328,21 @@ function layout() {
   pos(G.slotStock, colX(6), G.topY);
 }
 
-// cards are positioned with GPU transforms for smooth motion
-function place(el, x, y) { el._x = x; el._y = y; el.style.transform = `translate3d(${x}px,${y}px,0)`; }
+function place(el, x, y) { el._x = x; el._y = y; el.style.left = x + 'px'; el.style.top = y + 'px'; }
 
 function setCard(c, x, y, z, src, opt) {
   const el = els[c.id];
   x = Math.round(x); y = Math.round(y);
-  const wasUp = el.classList.contains('up');
   const cls = 'card ' + (c.up ? 'up ' : 'down ') + (isRed(c.s) ? 'red' : 'blk');
-  const keep = (el.className.match(/ (hint|shake|drag|fly|flip)/g) || []).join('');
+  const keep = (el.className.match(/ (hint|shake|drag)/g) || []).join('');
   if (el.className !== cls + keep) el.className = cls + keep;
-  if (c.up && !wasUp && !opt.noFlip) {
-    // turn-over animation
-    const d = +(el.dataset.flipDelay || 0); delete el.dataset.flipDelay;
-    el.style.animationDelay = d + 'ms';
-    el.classList.remove('flip'); void el.offsetWidth; el.classList.add('flip');
-    setTimeout(() => el.classList.remove('flip'), 400 + d);
-  }
   if (el._x !== x || el._y !== y) {
     // lift moving cards above everything while they travel
     el.style.zIndex = 500 + z;
-    el.classList.add('fly');
     place(el, x, y);
     const delay = parseFloat(el.style.transitionDelay) || 0;
     clearTimeout(el._zt);
-    el._zt = setTimeout(() => { el.style.zIndex = z; el.classList.remove('fly'); el._zt = 0; }, MOVE_MS + delay + 30);
+    el._zt = setTimeout(() => { el.style.zIndex = z; el._zt = 0; }, MOVE_MS + delay + 30);
   } else if (!el._zt) el.style.zIndex = z;
   locs[c.id] = src;
 }

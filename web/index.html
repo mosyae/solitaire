@@ -32,11 +32,8 @@ nav button:disabled{opacity:.35}
   font-family:Arial,"Helvetica Neue",Helvetica,Roboto,sans-serif;font-size:calc(var(--w)*.62);font-weight:700}
 .slot svg{width:55%;height:55%;fill:rgba(255,255,255,.3)}
 .card{position:absolute;left:0;top:0;width:var(--w);height:var(--h);border-radius:var(--rad);
-  transition:transform .32s cubic-bezier(.25,.75,.3,1),box-shadow .2s;will-change:transform;
+  transition:left .2s ease,top .2s ease;will-change:left,top;
   font-family:Arial,"Helvetica Neue",Helvetica,Roboto,sans-serif}
-.card.up.fly,.card.down.fly{box-shadow:0 6px 14px rgba(0,0,0,.45)}
-.card.flip{animation:flip .3s ease-out both}
-@keyframes flip{0%{scale:.05 1}100%{scale:1 1}}
 .card.up{background:#fff;border:1px solid #c4c4c4;box-shadow:0 1px 3px rgba(0,0,0,.35)}
 .card.down{border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.35);background-color:#56c0e6;
   background-size:100% 100%;
